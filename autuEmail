@@ -1,1 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>電子信箱輸入補全</title>
+  <style>
+    #suggestions {
+      border: 1px solid #ccc;
+      display: none;
+      position: absolute;
+      background-color: white;
+      max-width: 300px;
+      z-index: 999;
+    }
+    #suggestions div {
+      padding: 5px;
+      cursor: pointer;
+    }
+    #suggestions .highlight {
+      background-color: #dbeeff;
+    }
+    .input-wrapper {
+      position: relative;
+      width: 300px;
+    }
+  </style>
+</head>
+<body>
+  <h3>請輸入電子郵件：</h3>
+  <div class="input-wrapper">
+    <input type="text" id="email" autocomplete="off" style="width:100%;" />
+    <div id="suggestions"></div>
+  </div>
 
+  <script>
+    const emailInput = document.getElementById('email');
+    const suggestionsBox = document.getElementById('suggestions');
+    const domains = ['gmail.com', 'yahoo.com.tw', 'hotmail.com', 'outlook.com', 'icloud.com'];
+    let currentFocus = -1;
+
+    function updateSuggestions() {
+      const value = emailInput.value;
+      const atIndex = value.indexOf('@');
+      suggestionsBox.innerHTML = '';
+      currentFocus = -1;
+
+      if (atIndex !== -1 && value.length > atIndex + 1) {
+        const typedDomain = value.slice(atIndex + 1).toLowerCase();
+        const filtered = domains.filter(domain => domain.startsWith(typedDomain));
+
+        if (filtered.length > 0) {
+          suggestionsBox.style.display = 'block';
+          filtered.forEach(domain => {
+            const suggestion = document.createElement('div');
+            suggestion.textContent = value.slice(0, atIndex + 1) + domain;
+            suggestion.addEventListener('click', () => {
+              emailInput.value = suggestion.textContent;
+              suggestionsBox.style.display = 'none';
+            });
+            suggestionsBox.appendChild(suggestion);
+          });
+        } else {
+          suggestionsBox.style.display = 'none';
+        }
+      } else {
+        suggestionsBox.style.display = 'none';
+      }
+    }
+
+    function highlightSuggestion(index) {
+      const items = suggestionsBox.querySelectorAll('div');
+      items.forEach((item, i) => {
+        item.classList.toggle('highlight', i === index);
+      });
+    }
+
+    emailInput.addEventListener('input', updateSuggestions);
+
+    emailInput.addEventListener('keydown', (e) => {
+      const items = suggestionsBox.querySelectorAll('div');
+      if (items.length === 0) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        currentFocus = (currentFocus + 1) % items.length;
+        highlightSuggestion(currentFocus);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        currentFocus = (currentFocus - 1 + items.length) % items.length;
+        highlightSuggestion(currentFocus);
+      } else if (e.key === 'Enter') {
+        if (currentFocus >= 0 && currentFocus < items.length) {
+          e.preventDefault();
+          items[currentFocus].click();
+        }
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!document.querySelector('.input-wrapper').contains(e.target)) {
+        suggestionsBox.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>
