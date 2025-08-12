@@ -1,36 +1,217 @@
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.geom.Arc2D;
+import java.awt.geom.AffineTransform;
 import java.util.Random;
 
-public class RouletteGUI extends JFrame {
-    private JLabel resultLabel;
-    private String[] roulette = {"獎品 A", "獎品 B", "獎品 C", "獎品 D", "再接再厲"};
-    private Random random = new Random();
-
-    public RouletteGUI() {
-        setTitle("輪盤遊戲");
-        setSize(300, 200);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new FlowLayout());
-
-        JButton spinButton = new JButton("旋轉輪盤");
-        resultLabel = new JLabel("按下按鈕開始");
-        
-        spinButton.addActionListener(e -> spinRoulette());
-
-        add(spinButton);
-        add(resultLabel);
-    }
-
-    private void spinRoulette() {
-        int resultIndex = random.nextInt(roulette.length);
-        resultLabel.setText("🎯 結果：" + roulette[resultIndex]);
-    }
-
+public class SpinningRoulette extends JFrame {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            new RouletteGUI().setVisible(true);
+            SpinningRoulette app = new SpinningRoulette();
+            app.setVisible(true);
         });
+    }
+
+    private final WheelPanel wheel;
+    private final JButton spinBtn;
+    private final JLabel resultLabel;
+
+    public SpinningRoulette() {
+        setTitle("輪盤抽獎");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(520, 640);
+        setLocationRelativeTo(null);
+
+        // 你可以自行改這些獎項名稱與數量
+        String[] prizes = {"A 獎", "B 獎", "C 獎", "D 獎", "E 獎", "F 獎", "G 獎", "H 獎"};
+        wheel = new WheelPanel(prizes);
+
+        spinBtn = new JButton("開始旋轉");
+        resultLabel = new JLabel("結果：—", SwingConstants.CENTER);
+        resultLabel.setFont(resultLabel.getFont().deriveFont(Font.BOLD, 18f));
+
+        spinBtn.addActionListener(e -> {
+            spinBtn.setEnabled(false);
+            resultLabel.setText("結果：旋轉中…");
+            wheel.spin(() -> {
+                String r = wheel.getCurrentPrize();
+                resultLabel.setText("結果：" + r);
+                spinBtn.setEnabled(true);
+            });
+        });
+
+        JPanel bottom = new JPanel(new BorderLayout(10,10));
+        bottom.setBorder(BorderFactory.createEmptyBorder(6, 12, 12, 12));
+        bottom.add(spinBtn, BorderLayout.NORTH);
+        bottom.add(resultLabel, BorderLayout.CENTER);
+
+        setLayout(new BorderLayout());
+        add(wheel, BorderLayout.CENTER);
+        add(bottom, BorderLayout.SOUTH);
+    }
+
+    // --- 轉盤面板 ---
+    static class WheelPanel extends JPanel {
+        private final String[] labels;
+        private final Random rand = new Random();
+        private double angleRad = 0.0;            // 目前輪盤角度（弧度）
+        private final Timer timer;
+        private long animStartMs;
+        private long durationMs;
+        private double startAngle;
+        private double deltaAngle;                // 動畫期間要轉的總角度
+        private Runnable onFinish;
+
+        WheelPanel(String[] labels) {
+            this.labels = labels;
+            setBackground(new Color(245, 246, 248));
+
+            // 60FPS 左右
+            timer = new Timer(16, e -> onTick());
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            return new Dimension(520, 520);
+        }
+
+        public void spin(Runnable onFinish) {
+            this.onFinish = onFinish;
+
+            // 動畫參數：隨機 3~5 圈 + 隨機角度，時長 2.2~2.8 秒，ease-out
+            int fullTurns = 3 + rand.nextInt(3); // 3,4,5 圈
+            double extra = rand.nextDouble() * 2 * Math.PI; // 0~2π
+            durationMs = 2200 + rand.nextInt(600);          // 2200~2800 ms
+
+            startAngle = angleRad;
+            deltaAngle = fullTurns * 2 * Math.PI + extra;
+
+            animStartMs = System.currentTimeMillis();
+            timer.start();
+        }
+
+        private void onTick() {
+            long now = System.currentTimeMillis();
+            long t = now - animStartMs;
+            if (t >= durationMs) {
+                angleRad = startAngle + deltaAngle;
+                timer.stop();
+                repaint();
+                // 動畫結束回呼
+                if (onFinish != null) onFinish.run();
+                return;
+            }
+            double progress = t / (double) durationMs;      // 0~1
+            double eased = easeOutCubic(progress);          // 緩速
+            angleRad = startAngle + deltaAngle * eased;
+            repaint();
+        }
+
+        private double easeOutCubic(double x) {
+            double inv = 1 - x;
+            return 1 - inv * inv * inv;
+        }
+
+        // 計算目前指針（12 點鐘方向）對應的獎項
+        public String getCurrentPrize() {
+            int n = labels.length;
+            double seg = 2 * Math.PI / n;
+
+            // 指針在畫面固定於 12 點（-90°）。輪盤旋轉角 angleRad。
+            // 把畫面指針角轉換到輪盤座標：pointerWheelAngle = -90° - angleRad
+            double pointer = normalizeAngle(-Math.PI / 2 - angleRad);
+
+            int index = (int) Math.floor(pointer / seg);
+            // 防止邊界浮點誤差
+            if (index == n) index = 0;
+            return labels[index];
+        }
+
+        private double normalizeAngle(double a) {
+            double twoPi = 2 * Math.PI;
+            a %= twoPi;
+            if (a < 0) a += twoPi;
+            return a;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int size = Math.min(getWidth(), getHeight()) - 40;
+            int x = (getWidth() - size) / 2;
+            int y = (getHeight() - size) / 2;
+
+            // 畫底盤陰影
+            g2.setColor(new Color(0, 0, 0, 20));
+            g2.fillOval(x + 6, y + 10, size, size);
+
+            // 優雅白底
+            g2.setColor(new Color(252, 252, 254));
+            g2.fillOval(x, y, size, size);
+
+            // 旋轉輪盤
+            AffineTransform old = g2.getTransform();
+            g2.rotate(angleRad, getWidth() / 2.0, getHeight() / 2.0);
+
+            int n = labels.length;
+            double sweepDeg = 360.0 / n;
+            for (int i = 0; i < n; i++) {
+                // 交錯色塊
+                g2.setColor((i % 2 == 0) ? new Color(255, 204, 102) : new Color(255, 230, 170));
+                g2.fill(new Arc2D.Double(x, y, size, size, i * sweepDeg, sweepDeg, Arc2D.PIE));
+            }
+
+            // 外框
+            g2.setColor(new Color(90, 90, 90));
+            g2.setStroke(new BasicStroke(3f));
+            g2.drawOval(x, y, size, size);
+
+            // 文字
+            g2.setFont(getFont().deriveFont(Font.BOLD, Math.max(14f, size * 0.045f)));
+            for (int i = 0; i < n; i++) {
+                double theta = Math.toRadians(i * sweepDeg + sweepDeg / 2.0);
+                double r = size * 0.32;
+                int cx = getWidth() / 2;
+                int cy = getHeight() / 2;
+                int tx = (int) (cx + Math.cos(theta) * r);
+                int ty = (int) (cy - Math.sin(theta) * r);
+
+                String text = labels[i];
+                FontMetrics fm = g2.getFontMetrics();
+                int tw = fm.stringWidth(text);
+                int th = fm.getAscent();
+
+                g2.setColor(new Color(50, 50, 50));
+                g2.drawString(text, tx - tw / 2, ty + th / 3);
+            }
+
+            g2.setTransform(old);
+
+            // 指針（固定在 12 點方向）
+            int cx = getWidth() / 2;
+            int cy = getHeight() / 2;
+            int pointerLen = (int) (size * 0.12);
+            Polygon pointer = new Polygon();
+            pointer.addPoint(cx, y - 8);                    // 尖端
+            pointer.addPoint(cx - 14, y + 24);
+            pointer.addPoint(cx + 14, y + 24);
+            g2.setColor(new Color(220, 60, 60));
+            g2.fill(pointer);
+            g2.setColor(new Color(120, 20, 20));
+            g2.draw(pointer);
+
+            // 中央圓形
+            int hub = (int) (size * 0.14);
+            g2.setColor(new Color(255, 255, 255));
+            g2.fillOval(cx - hub / 2, cy - hub / 2, hub, hub);
+            g2.setColor(new Color(160, 160, 160));
+            g2.setStroke(new BasicStroke(2f));
+            g2.drawOval(cx - hub / 2, cy - hub / 2, hub, hub);
+
+            g2.dispose();
+        }
     }
 }
