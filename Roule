@@ -1,0 +1,36 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.Random;
+
+public class RouletteGUI extends JFrame {
+    private JLabel resultLabel;
+    private String[] roulette = {"獎品 A", "獎品 B", "獎品 C", "獎品 D", "再接再厲"};
+    private Random random = new Random();
+
+    public RouletteGUI() {
+        setTitle("輪盤遊戲");
+        setSize(300, 200);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new FlowLayout());
+
+        JButton spinButton = new JButton("旋轉輪盤");
+        resultLabel = new JLabel("按下按鈕開始");
+        
+        spinButton.addActionListener(e -> spinRoulette());
+
+        add(spinButton);
+        add(resultLabel);
+    }
+
+    private void spinRoulette() {
+        int resultIndex = random.nextInt(roulette.length);
+        resultLabel.setText("🎯 結果：" + roulette[resultIndex]);
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            new RouletteGUI().setVisible(true);
+        });
+    }
+}
